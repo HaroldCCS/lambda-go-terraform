@@ -21,14 +21,8 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Empaquetado del binario
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_file = "bootstrap" 
-  output_path = "lambda_function.zip"
-}
-
 # 1. Definición de la Tabla DynamoDB
+# Si ya existe y no quieres importarla, cámbiale el nombre aquí (ej: "UsersTableV2")
 resource "aws_dynamodb_table" "users_table" {
   name           = "UsersTable"
   billing_mode   = "PAY_PER_REQUEST"
@@ -40,9 +34,9 @@ resource "aws_dynamodb_table" "users_table" {
   }
 }
 
-# 2. El recurso que faltaba: El Rol de ejecución de la Lambda
+# 2. Rol de ejecución de la Lambda
 resource "aws_iam_role" "lambda_exec" {
-  name = "go_lambda_execution_role"
+  name = "go_lambda_execution_role_crud" # Nombre ajustado para evitar conflictos
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -54,16 +48,16 @@ resource "aws_iam_role" "lambda_exec" {
   })
 }
 
-# Permisos básicos para logs en CloudWatch
+# Permisos básicos para logs
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# 3. Política para que la Lambda acceda a DynamoDB
+# 3. Política de acceso a DynamoDB
 resource "aws_iam_policy" "lambda_dynamodb_policy" {
-  name        = "LambdaDynamoDBPolicy"
-  description = "Permite a la lambda acceder a la tabla de usuarios"
+  name        = "LambdaDynamoDBPolicyCRUD"
+  description = "Permite acceso a la tabla de usuarios"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -83,13 +77,18 @@ resource "aws_iam_policy" "lambda_dynamodb_policy" {
   })
 }
 
-# Unión de la política de DynamoDB al Rol
 resource "aws_iam_role_policy_attachment" "lambda_dynamo_attach" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = aws_iam_policy.lambda_dynamodb_policy.arn
 }
 
 # 4. Definición de la Función Lambda
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_file = "bootstrap" 
+  output_path = "lambda_function.zip"
+}
+
 resource "aws_lambda_function" "go_lambda" {
   function_name    = "users-crud-lambda"
   filename         = data.archive_file.lambda_zip.output_path
