@@ -1,6 +1,27 @@
-# ... (terraform y providers se mantienen igual) ...
+# --- CONFIGURACIÓN DE TERRAFORM ---
+terraform {
+  required_version = ">= 1.5.0"
+  backend "s3" {
+    bucket         = "deploy-lambdas-terraform-state"
+    key            = "app/terraform.tfstate" # CLAVE DIFERENTE: 'app' en lugar de 'infra'
+    region         = "us-east-1"
+    dynamodb_table = "terraform-lock-table"
+    encrypt        = true
+  }
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
 
 # --- DATA SOURCES ---
+# Estos bloques permiten a este Terraform "leer" recursos creados por el de infra
 data "aws_iam_role" "shared_role" { name = "go_lambda_execution_role_shared" }
 data "aws_sqs_queue" "user_queue" { name = "user-creation-queue" }
 
@@ -16,39 +37,6 @@ data "archive_file" "worker_zip" {
   source_file = "../bootstrap_worker"
   output_path = "worker_processor.zip"
 }
-
-# ---------------------------------------------- SSM SECRET GRATUITO  ----------------------------------------------
-# 1. Crear el parámetro seguro (Gratis)
-resource "aws_ssm_parameter" "mongo_db_uri" {
-  name        = "/prod/mongodb/uri"
-  description = "URI de conexion para MongoDB Atlas"
-  type        = "SecureString"
-  value       = "placeholder_cambiar_manualmente" # El valor real lo pones por CLI o Consola
-
-  lifecycle {
-    ignore_changes = [value] # Evita que Terraform sobrescriba el valor real con el placeholder
-  }
-}
-
-# 2. Ajustar la política de IAM para SSM
-resource "aws_iam_policy" "ssm_policy" {
-  name = "LambdaSSMReadPolicy"
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Action   = "ssm:GetParameter"
-      Effect   = "Allow"
-      Resource = aws_ssm_parameter.mongo_db_uri.arn
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ssm_attach" {
-  role       = aws_iam_role.lambda_exec_shared.name
-  policy_arn = aws_iam_policy.ssm_policy.arn
-}
-# ---------------------------------------------- SSM SECRET GRATUITO  ----------------------------------------------
-
 
 # --- LAMBDAS ---
 
@@ -72,7 +60,7 @@ resource "aws_lambda_function" "api_producer" {
 
 # 2. Worker SQS
 resource "aws_lambda_function" "sqs_worker" {
-  function_name    = var.lambda_worker_name # Usar variable
+  function_name    = var.lambda_worker_name 
   filename         = data.archive_file.worker_zip.output_path
   source_code_hash = data.archive_file.worker_zip.output_base64sha256
   handler          = "bootstrap"
@@ -83,8 +71,8 @@ resource "aws_lambda_function" "sqs_worker" {
 
   environment {
     variables = {
-      TABLE_NAME = "UsersTable"
-      MONGO_URI = var.mongo_param_path
+      TABLE_NAME  = "UsersTable"
+      MONGO_URI   = var.mongo_param_path
     }
   }
 }

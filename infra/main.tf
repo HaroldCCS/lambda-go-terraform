@@ -242,3 +242,33 @@ output "sqs_url" {
   value = aws_sqs_queue.user_creation_queue.id
 }
 # ----------------------------------- END set up (SQS) -----------------------------------
+
+
+# ----------------------------------- START set up (SSM) -----------------------------------
+resource "aws_ssm_parameter" "mongo_db_uri" {
+  name        = var.mongo_param_path
+  description = "URI de conexion para MongoDB Atlas"
+  type        = "SecureString"
+  value       = "placeholder_cambiar_manualmente"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_iam_policy" "ssm_policy" {
+  name = "LambdaSSMReadPolicy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = "ssm:GetParameter"
+      Effect   = "Allow"
+      Resource = aws_ssm_parameter.mongo_db_uri.arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_attach" {
+  role       = aws_iam_role.lambda_exec_shared.name
+  policy_arn = aws_iam_policy.ssm_policy.arn
+}
+# ----------------------------------- END set up (SSM) -----------------------------------
+
+output "sqs_url" { value = aws_sqs_queue.user_creation_queue.id }
