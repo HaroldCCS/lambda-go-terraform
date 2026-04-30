@@ -21,9 +21,13 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Build Go Binary
+      - name: Build Producer
         run: |
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap main.go
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap_api ./cmd/api-producer/main.go
+
+      - name: Build Worker
+        run: |
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap_worker ./cmd/sqs-worker/main.go
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4

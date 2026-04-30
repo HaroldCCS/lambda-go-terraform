@@ -151,7 +151,7 @@ resource "aws_api_gateway_integration_response" "options_integration_response" {
 # ----------------------------------- END set up (API GATEWAY) -----------------------------------
 
 
-# --- 5. DESPLIEGUE, STAGE Y THROTTLING ---
+# ----------------------------------- START set up (THROTTLING) -----------------------------------
 resource "aws_api_gateway_deployment" "api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.users_api.id
 
@@ -200,3 +200,38 @@ resource "aws_lambda_permission" "apigw_lambda" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.users_api.execution_arn}/*/*"
 }
+# ----------------------------------- END set up (THROTTLING) -----------------------------------
+
+
+# ----------------------------------- START set up (SQS) -----------------------------------
+resource "aws_sqs_queue" "user_creation_queue" {
+  name                      = "user-creation-queue"
+  message_retention_seconds = 86400 # 1 día
+  receive_wait_time_seconds = 10    # Long polling
+}
+
+# --- 2. PERMISOS ADICIONALES PARA EL ROL COMPARTIDO ---
+resource "aws_iam_policy" "sqs_policy" {
+  name = "LambdaSQSPolicy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Effect   = "Allow"
+        Resource = aws_sqs_queue.user_creation_queue.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "sqs_attach" {
+  role       = aws_iam_role.lambda_exec_shared.name
+  policy_arn = aws_iam_policy.sqs_policy.arn
+}
+
+# --- OUTPUT PARA LA URL DE LA COLA ---
+output "sqs_url" {
+  value = aws_sqs_queue.user_creation_queue.id
+}
+# ----------------------------------- END set up (SQS) -----------------------------------

@@ -1,34 +1,62 @@
-terraform {
-  required_version = ">= 1.5.0"
-  backend "s3" {
-    bucket         = "deploy-lambdas-terraform-state"
-    key            = "lambda-go/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-lock-table"
-    encrypt        = true
-  }
-  required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
-  }
-}
+# ... (terraform y providers se mantienen igual) ...
 
-provider "aws" { region = "us-east-1" }
+# --- DATA SOURCES ---
+data "aws_iam_role" "shared_role" { name = "go_lambda_execution_role_shared" }
+data "aws_sqs_queue" "user_queue" { name = "user-creation-queue" }
 
-# Obtenemos el ARN del rol creado por la carpeta infra
-data "aws_iam_role" "shared_role" {
-  name = "go_lambda_execution_role_shared"
-}
-
-data "archive_file" "lambda_zip" {
+# --- EMPAQUETADO ---
+data "archive_file" "api_zip" {
   type        = "zip"
-  source_file = "../bootstrap" # Sube un nivel para encontrar el binario
-  output_path = "lambda_function.zip"
+  source_file = "../bootstrap_api"
+  output_path = "api_producer.zip"
 }
 
-resource "aws_lambda_function" "go_lambda" {
-  function_name    = "users-crud-lambda"
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+data "archive_file" "worker_zip" {
+  type        = "zip"
+  source_file = "../bootstrap_worker"
+  output_path = "worker_processor.zip"
+}
+
+# ---------------------------------------------- SSM SECRET GRATUITO  ----------------------------------------------
+# 1. Crear el parámetro seguro (Gratis)
+resource "aws_ssm_parameter" "mongo_db_uri" {
+  name        = "/prod/mongodb/uri"
+  description = "URI de conexion para MongoDB Atlas"
+  type        = "SecureString"
+  value       = "placeholder_cambiar_manualmente" # El valor real lo pones por CLI o Consola
+
+  lifecycle {
+    ignore_changes = [value] # Evita que Terraform sobrescriba el valor real con el placeholder
+  }
+}
+
+# 2. Ajustar la política de IAM para SSM
+resource "aws_iam_policy" "ssm_policy" {
+  name = "LambdaSSMReadPolicy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action   = "ssm:GetParameter"
+      Effect   = "Allow"
+      Resource = aws_ssm_parameter.mongo_db_uri.arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_attach" {
+  role       = aws_iam_role.lambda_exec_shared.name
+  policy_arn = aws_iam_policy.ssm_policy.arn
+}
+# ---------------------------------------------- SSM SECRET GRATUITO  ----------------------------------------------
+
+
+# --- LAMBDAS ---
+
+# 1. Producer API
+resource "aws_lambda_function" "api_producer" {
+  function_name    = "users-api-producer"
+  filename         = data.archive_file.api_zip.output_path
+  source_code_hash = data.archive_file.api_zip.output_base64sha256
   handler          = "bootstrap"
   runtime          = "provided.al2023"
   role             = data.aws_iam_role.shared_role.arn
@@ -37,6 +65,40 @@ resource "aws_lambda_function" "go_lambda" {
   environment {
     variables = {
       TABLE_NAME = "UsersTable"
+      SQS_URL    = data.aws_sqs_queue.user_queue.id
     }
   }
+}
+
+# 2. Worker SQS
+resource "aws_lambda_function" "sqs_worker" {
+  function_name    = "user-sqs-worker"
+  filename         = data.archive_file.worker_zip.output_path
+  source_code_hash = data.archive_file.worker_zip.output_base64sha256
+  handler          = "bootstrap"
+  runtime          = "provided.al2023"
+  role             = data.aws_iam_role.shared_role.arn
+  architectures    = ["arm64"]
+  reserved_concurrent_executions = 1
+
+  environment {
+    variables = {
+      TABLE_NAME = "UsersTable"
+      MONGO_URI  = "/prod/mongodb/uri"
+    }
+  }
+}
+
+# --- TRIGGERS ---
+resource "aws_lambda_event_source_mapping" "sqs_trigger" {
+  event_source_arn = data.aws_sqs_queue.user_queue.arn
+  function_name    = aws_lambda_function.sqs_worker.arn
+  batch_size       = 1
+}
+
+resource "aws_lambda_permission" "apigw_lambda" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api_producer.function_name
+  principal     = "apigateway.amazonaws.com"
 }
