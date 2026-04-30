@@ -67,7 +67,6 @@ resource "aws_lambda_function" "sqs_worker" {
   runtime          = "provided.al2023"
   role             = data.aws_iam_role.shared_role.arn
   architectures    = ["arm64"]
-  reserved_concurrent_executions = 1
 
   environment {
     variables = {
@@ -82,6 +81,9 @@ resource "aws_lambda_event_source_mapping" "sqs_trigger" {
   event_source_arn = data.aws_sqs_queue.user_queue.arn
   function_name    = aws_lambda_function.sqs_worker.arn
   batch_size       = 1
+  scaling_config {
+    maximum_concurrency = 2 #2 es el minimo por AWS
+  }
 }
 
 resource "aws_lambda_permission" "apigw_lambda" {
