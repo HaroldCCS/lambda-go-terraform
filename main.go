@@ -6,7 +6,7 @@ import (
 )
 
 func HandleRequest(ctx context.Context, event interface{}) (string, error) {
-	return "Despliegue profesional exitoso!", nil
+	return "Soy una prueba de cambio para probar el CD!", nil
 }
 
 func main() {
