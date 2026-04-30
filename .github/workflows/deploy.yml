@@ -23,11 +23,13 @@ jobs:
 
       - name: Build Producer
         run: |
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap_api ./cmd/api-producer/main.go
+          mkdir -p dist_api
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist_api/bootstrap ./cmd/api-producer/main.go
 
       - name: Build Worker
         run: |
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap_worker ./cmd/sqs-worker/main.go
+          mkdir -p dist_worker
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist_worker/bootstrap ./cmd/sqs-worker/main.go
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4

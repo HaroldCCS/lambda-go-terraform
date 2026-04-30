@@ -28,13 +28,13 @@ data "aws_sqs_queue" "user_queue" { name = "user-creation-queue" }
 # --- EMPAQUETADO ---
 data "archive_file" "api_zip" {
   type        = "zip"
-  source_file = "../bootstrap_api"
+  source_file = "../dist_api/bootstrap" # Apunta al archivo llamado bootstrap
   output_path = "api_producer.zip"
 }
 
 data "archive_file" "worker_zip" {
   type        = "zip"
-  source_file = "../bootstrap_worker"
+  source_file = "../dist_worker/bootstrap" # Apunta al archivo llamado bootstrap
   output_path = "worker_processor.zip"
 }
 
