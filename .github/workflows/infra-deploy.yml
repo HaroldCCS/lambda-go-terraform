@@ -1,28 +1,18 @@
-name: Continuous Deployment
+name: Infrastructure Base Deploy
 
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch: # Permite ejecución manual desde la interfaz de GitHub
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  terraform:
+  terraform-infra:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Build Go Binary
-        run: |
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap main.go
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -35,6 +25,6 @@ jobs:
 
       - name: Terraform Init & Apply
         run: |
-          cd app
+          cd infra
           terraform init
           terraform apply -auto-approve
