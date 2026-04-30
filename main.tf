@@ -27,26 +27,49 @@ data "archive_file" "lambda_zip" {
   output_path = "lambda_function.zip"
 }
 
-resource "aws_iam_role" "lambda_exec" {
-  name = "go_lambda_execution_role"
+# 1. Definición de la Tabla DynamoDB
+resource "aws_dynamodb_table" "users_table" {
+  name           = "UsersTable"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "userId"
 
-  assume_role_policy = jsonencode({
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+}
+
+# 2. Política para que la Lambda acceda a DynamoDB
+resource "aws_iam_policy" "lambda_dynamodb_policy" {
+  name        = "LambdaDynamoDBPolicy"
+  description = "Permite a la lambda acceder a la tabla de usuarios"
+
+  policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = { Service = "lambda.amazonaws.com" }
-    }]
+    Statement = [
+      {
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Scan"
+        ]
+        Effect   = "Allow"
+        Resource = aws_dynamodb_table.users_table.arn
+      }
+    ]
   })
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_policy" {
+resource "aws_iam_role_policy_attachment" "lambda_dynamo_attach" {
   role       = aws_iam_role.lambda_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  policy_arn = aws_iam_policy.lambda_dynamodb_policy.arn
 }
 
+# 3. Actualización de la Lambda (Añadir variable de entorno)
 resource "aws_lambda_function" "go_lambda" {
-  function_name    = "my-professional-go-lambda"
+  function_name    = "users-crud-lambda"
   filename         = data.archive_file.lambda_zip.output_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   handler          = "bootstrap"
@@ -56,7 +79,7 @@ resource "aws_lambda_function" "go_lambda" {
 
   environment {
     variables = {
-      NODE_ENV = "production"
+      TABLE_NAME = aws_dynamodb_table.users_table.name
     }
   }
 }
