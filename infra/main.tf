@@ -5,6 +5,7 @@ go_lambda_execution_role_shared
 POLITICAS CREADAS:
 LambdaDynamoCRUDPolicy
 LambdaSQSPolicy
+LambdaSSMReadPolicy
 
 API GATEWAY:
 UsersCRUD-API
@@ -271,4 +272,3 @@ resource "aws_iam_role_policy_attachment" "ssm_attach" {
 }
 # ----------------------------------- END set up (SSM) -----------------------------------
 
-output "sqs_url" { value = aws_sqs_queue.user_creation_queue.id }
