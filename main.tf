@@ -21,6 +21,7 @@ provider "aws" {
   region = "us-east-1"
 }
 
+# Empaquetado del binario
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_file = "bootstrap" 
@@ -39,7 +40,27 @@ resource "aws_dynamodb_table" "users_table" {
   }
 }
 
-# 2. Política para que la Lambda acceda a DynamoDB
+# 2. El recurso que faltaba: El Rol de ejecución de la Lambda
+resource "aws_iam_role" "lambda_exec" {
+  name = "go_lambda_execution_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+}
+
+# Permisos básicos para logs en CloudWatch
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# 3. Política para que la Lambda acceda a DynamoDB
 resource "aws_iam_policy" "lambda_dynamodb_policy" {
   name        = "LambdaDynamoDBPolicy"
   description = "Permite a la lambda acceder a la tabla de usuarios"
@@ -62,12 +83,13 @@ resource "aws_iam_policy" "lambda_dynamodb_policy" {
   })
 }
 
+# Unión de la política de DynamoDB al Rol
 resource "aws_iam_role_policy_attachment" "lambda_dynamo_attach" {
   role       = aws_iam_role.lambda_exec.name
   policy_arn = aws_iam_policy.lambda_dynamodb_policy.arn
 }
 
-# 3. Actualización de la Lambda (Añadir variable de entorno)
+# 4. Definición de la Función Lambda
 resource "aws_lambda_function" "go_lambda" {
   function_name    = "users-crud-lambda"
   filename         = data.archive_file.lambda_zip.output_path
