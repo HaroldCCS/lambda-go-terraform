@@ -19,7 +19,8 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Tabla DynamoDB
+
+# ----------------------------------- START Database set up (DYNAMODB) -----------------------------------
 resource "aws_dynamodb_table" "users_table" {
   name         = "UsersTable"
   billing_mode = "PAY_PER_REQUEST"
@@ -31,7 +32,7 @@ resource "aws_dynamodb_table" "users_table" {
   }
 }
 
-# Rol de ejecución para la Lambda
+# --- 2. SEGURIDAD E IAM (ROLES Y POLÍTICAS) ---
 resource "aws_iam_role" "lambda_exec_shared" {
   name = "go_lambda_execution_role_shared"
   assume_role_policy = jsonencode({
@@ -46,13 +47,11 @@ resource "aws_iam_role" "lambda_exec_shared" {
   })
 }
 
-# Permisos: Logs
 resource "aws_iam_role_policy_attachment" "basic_exec" {
   role       = aws_iam_role.lambda_exec_shared.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Política: DynamoDB CRUD
 resource "aws_iam_policy" "dynamo_crud_policy" {
   name = "LambdaDynamoCRUDPolicy"
   policy = jsonencode({
@@ -74,4 +73,130 @@ resource "aws_iam_policy" "dynamo_crud_policy" {
 resource "aws_iam_role_policy_attachment" "dynamo_attach" {
   role       = aws_iam_role.lambda_exec_shared.name
   policy_arn = aws_iam_policy.dynamo_crud_policy.arn
+}
+# ----------------------------------- END Database set up (DYNAMODB) -----------------------------------
+
+
+# ----------------------------------- START set up (API GATEWAY) -----------------------------------
+resource "aws_api_gateway_rest_api" "users_api" {
+  name        = "UsersCRUD-API"
+  description = "API para HaroldSoftware con proteccion CORS y Throttling"
+}
+
+resource "aws_api_gateway_resource" "users_resource" {
+  rest_api_id = aws_api_gateway_rest_api.users_api.id
+  parent_id   = aws_api_gateway_rest_api.users_api.root_resource_id
+  path_part   = "users"
+}
+
+# Metodo ANY (Proxy para la Lambda)
+resource "aws_api_gateway_method" "users_method" {
+  rest_api_id   = aws_api_gateway_rest_api.users_api.id
+  resource_id   = aws_api_gateway_resource.users_resource.id
+  http_method   = "ANY"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.users_api.id
+  resource_id             = aws_api_gateway_resource.users_resource.id
+  http_method             = aws_api_gateway_method.users_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:638630172726:function:users-crud-lambda/invocations"
+}
+
+# --- 4. CONFIGURACIÓN DE CORS (OPTIONS) ---
+resource "aws_api_gateway_method" "options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.users_api.id
+  resource_id   = aws_api_gateway_resource.users_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.users_api.id
+  resource_id = aws_api_gateway_resource.users_resource.id
+  http_method = aws_api_gateway_method.options_method.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "options_200" {
+  rest_api_id = aws_api_gateway_rest_api.users_api.id
+  resource_id = aws_api_gateway_resource.users_resource.id
+  http_method = aws_api_gateway_method.options_method.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Headers" = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_integration_response" {
+  rest_api_id = aws_api_gateway_rest_api.users_api.id
+  resource_id = aws_api_gateway_resource.users_resource.id
+  http_method = aws_api_gateway_method.options_method.http_method
+  status_code = aws_api_gateway_method_response.options_200.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin"  = "'https://haroldsoftware.com'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+  }
+  depends_on = [aws_api_gateway_integration.options_integration]
+}
+# ----------------------------------- END set up (API GATEWAY) -----------------------------------
+
+
+# --- 5. DESPLIEGUE, STAGE Y THROTTLING ---
+resource "aws_api_gateway_deployment" "api_deployment" {
+  rest_api_id = aws_api_gateway_rest_api.users_api.id
+
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.users_resource.id,
+      aws_api_gateway_method.users_method.http_method,
+      aws_api_gateway_integration.lambda_integration.id,
+      aws_api_gateway_method.options_method.http_method,
+      aws_api_gateway_integration.options_integration.id,
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [
+    aws_api_gateway_integration.lambda_integration, 
+    aws_api_gateway_integration.options_integration
+  ]
+}
+
+resource "aws_api_gateway_stage" "prod" {
+  deployment_id = aws_api_gateway_deployment.api_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.users_api.id
+  stage_name    = "prod"
+}
+
+resource "aws_api_gateway_method_settings" "throttling" {
+  rest_api_id = aws_api_gateway_rest_api.users_api.id
+  stage_name  = aws_api_gateway_stage.prod.stage_name
+  method_path = "*/*"
+
+  settings {
+    throttling_burst_limit = 10
+    throttling_rate_limit  = 5
+  }
+}
+
+# --- 6. PERMISOS DE INVOCACIÓN ---
+resource "aws_lambda_permission" "apigw_lambda" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = "users-crud-lambda"
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.users_api.execution_arn}/*/*"
 }
