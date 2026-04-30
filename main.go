@@ -5,8 +5,8 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-func HandleRequest(ctx context.Context, name string) (string, error) {
-	return "Hola " + name + " desde una Lambda en Go!", nil
+func HandleRequest(ctx context.Context, event interface{}) (string, error) {
+	return "Despliegue profesional exitoso!", nil
 }
 
 func main() {

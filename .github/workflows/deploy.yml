@@ -1,39 +1,45 @@
-name: Deploy Lambda
+name: Continuous Deployment
 
 on:
   push:
     branches: [ main ]
 
+permissions:
+  id-token: write # Requerido para OIDC
+  contents: read
+
 jobs:
-  deploy:
+  terraform:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.22'
 
-      - name: Build Binary
+      - name: Build Go Binary
         run: |
-          # Go en AWS Lambda requiere que el binario se llame 'bootstrap'
-          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
-          zip deployment.zip bootstrap
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+          # Compilamos para ARM64 ya que definimos esa arquitectura en Terraform
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o bootstrap main.go
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # Sustituye con el ARN del rol que crees para OIDC
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole 
           aws-region: us-east-1
+
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan
 
       - name: Terraform Apply
         run: terraform apply -auto-approve

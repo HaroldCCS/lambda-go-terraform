@@ -1,39 +1,64 @@
-provider "aws" {
-  region = "us-east-1" # Cambia según tu preferencia
+terraform {
+  required_version = ">= 1.5.0"
+  
+  # 1. Backend para persistencia y bloqueo de estado
+  backend "s3" {
+    bucket         = "deploy-lambdas-terraform-state" # Cambia esto
+    key            = "lambda-go/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-lock-table"
+    encrypt        = true
+  }
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
 }
 
-# Rol de IAM para la Lambda
-resource "aws_iam_role" "iam_for_lambda" {
-  name = "my_lambda_role"
+provider "aws" {
+  region = "us-east-1"
+}
+
+# 2. Empaquetado automático del binario
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_file = "bootstrap" 
+  output_path = "lambda_function.zip"
+}
+
+resource "aws_iam_role" "lambda_exec" {
+  name = "go_lambda_execution_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Sid    = ""
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      },
-    ]
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
   })
 }
 
-# Política básica para logs en CloudWatch
-resource "aws_iam_role_policy_attachment" "lambda_logs" {
-  role       = aws_iam_role.iam_for_lambda.name
+resource "aws_iam_role_policy_attachment" "lambda_policy" {
+  role       = aws_iam_role.lambda_exec.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# Definición de la función Lambda
-resource "aws_lambda_function" "test_lambda" {
-  filename      = "deployment.zip"
-  function_name = "my_go_lambda"
-  role          = aws_iam_role.iam_for_lambda.arn
-  handler       = "bootstrap" # Requerido para runtime provided.al2023
+resource "aws_lambda_function" "go_lambda" {
+  function_name    = "my-professional-go-lambda"
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  handler          = "bootstrap"
+  runtime          = "provided.al2023"
+  role             = aws_iam_role.lambda_exec.arn
+  architectures    = ["arm64"] # ARM es más barato y rápido para Go
 
-  runtime = "provided.al2023"
-  architectures = ["x86_64"]
+  environment {
+    variables = {
+      NODE_ENV = "production"
+    }
+  }
 }
