@@ -1,9 +1,26 @@
+/*
+ROLES CREADOS:
+go_lambda_execution_role_shared
+
+POLITICAS CREADAS:
+LambdaDynamoCRUDPolicy
+LambdaSQSPolicy
+
+API GATEWAY:
+UsersCRUD-API
+
+
+SQS:
+user-creation-queue
+
+*/
+
 terraform {
   required_version = ">= 1.5.0"
   backend "s3" {
     bucket         = "deploy-lambdas-terraform-state"
     key            = "infra/terraform.tfstate"
-    region         = "us-east-1"
+    region         = var.aws_region
     dynamodb_table = "terraform-lock-table"
     encrypt        = true
   }
@@ -16,7 +33,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = var.aws_region
 }
 
 
@@ -103,7 +120,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   http_method             = aws_api_gateway_method.users_method.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:638630172726:function:users-crud-lambda/invocations"
+  uri                     = "arn:aws:apigateway:${var.aws_region}lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}${var.aws_account_id}:function:users-crud-lambda/invocations"
 }
 
 # --- 4. CONFIGURACIÓN DE CORS (OPTIONS) ---
@@ -193,12 +210,14 @@ resource "aws_api_gateway_method_settings" "throttling" {
 }
 
 # --- 6. PERMISOS DE INVOCACIÓN ---
-resource "aws_lambda_permission" "apigw_lambda" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = "users-crud-lambda"
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.users_api.execution_arn}/*/*"
+resource "aws_api_gateway_integration" "lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.users_api.id
+  resource_id             = aws_api_gateway_resource.users_resource.id
+  http_method             = aws_api_gateway_method.users_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  # Usamos la variable para construir el ARN de invocación
+  uri                     = "arn:aws:apigateway:${var.aws_region}lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}${var.aws_account_id}:function:${var.lambda_producer_name}/invocations"
 }
 # ----------------------------------- END set up (THROTTLING) -----------------------------------
 

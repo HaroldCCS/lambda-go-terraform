@@ -54,7 +54,7 @@ resource "aws_iam_role_policy_attachment" "ssm_attach" {
 
 # 1. Producer API
 resource "aws_lambda_function" "api_producer" {
-  function_name    = "users-api-producer"
+  function_name    = var.lambda_producer_name
   filename         = data.archive_file.api_zip.output_path
   source_code_hash = data.archive_file.api_zip.output_base64sha256
   handler          = "bootstrap"
@@ -72,7 +72,7 @@ resource "aws_lambda_function" "api_producer" {
 
 # 2. Worker SQS
 resource "aws_lambda_function" "sqs_worker" {
-  function_name    = "user-sqs-worker"
+  function_name    = var.lambda_worker_name # Usar variable
   filename         = data.archive_file.worker_zip.output_path
   source_code_hash = data.archive_file.worker_zip.output_base64sha256
   handler          = "bootstrap"
@@ -84,7 +84,7 @@ resource "aws_lambda_function" "sqs_worker" {
   environment {
     variables = {
       TABLE_NAME = "UsersTable"
-      MONGO_URI  = "/prod/mongodb/uri"
+      MONGO_URI = var.mongo_param_path
     }
   }
 }
@@ -101,4 +101,5 @@ resource "aws_lambda_permission" "apigw_lambda" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.api_producer.function_name
   principal     = "apigateway.amazonaws.com"
+  source_arn    = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:*/*/*"
 }
