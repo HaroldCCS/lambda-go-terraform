@@ -1,9 +1,8 @@
 terraform {
   required_version = ">= 1.5.0"
   
-  # 1. Backend para persistencia y bloqueo de estado
   backend "s3" {
-    bucket         = "deploy-lambdas-terraform-state" # Cambia esto
+    bucket         = "deploy-lambdas-terraform-state"
     key            = "lambda-go/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-lock-table"
@@ -22,7 +21,6 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 2. Empaquetado automático del binario
 data "archive_file" "lambda_zip" {
   type        = "zip"
   source_file = "bootstrap" 
@@ -54,7 +52,7 @@ resource "aws_lambda_function" "go_lambda" {
   handler          = "bootstrap"
   runtime          = "provided.al2023"
   role             = aws_iam_role.lambda_exec.arn
-  architectures    = ["arm64"] # ARM es más barato y rápido para Go
+  architectures    = ["arm64"]
 
   environment {
     variables = {
