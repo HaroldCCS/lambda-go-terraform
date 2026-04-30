@@ -250,8 +250,12 @@ resource "aws_ssm_parameter" "mongo_db_uri" {
   name        = var.mongo_param_path
   description = "URI de conexion para MongoDB Atlas"
   type        = "SecureString"
-  value       = "placeholder_cambiar_manualmente"
-  lifecycle { ignore_changes = [value] }
+  value       = var.mongo_uri_value
+  overwrite   = true
+
+  lifecycle {
+    ignore_changes = [value] 
+  }
 }
 
 resource "aws_iam_policy" "ssm_policy" {

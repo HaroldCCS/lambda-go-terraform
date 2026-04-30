@@ -10,6 +10,12 @@ variable "mongo_param_path" {
   default = "/prod/mongodb/uri"
 }
 
+variable "mongo_uri_value" {
+  description = "El valor real de la URI de MongoDB"
+  type        = string
+  sensitive   = true
+}
+
 variable "aws_account_id" {
   default = "638630172726"
 }

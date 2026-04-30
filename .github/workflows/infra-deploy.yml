@@ -1,7 +1,7 @@
 name: Infrastructure Base Deploy
 
 on:
-  workflow_dispatch: # Permite ejecución manual desde la interfaz de GitHub
+  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -27,4 +27,4 @@ jobs:
         run: |
           cd infra
           terraform init
-          terraform apply -auto-approve
+          terraform apply -auto-approve -var="mongo_uri_value=${{ secrets.MONGO_URI }}"
