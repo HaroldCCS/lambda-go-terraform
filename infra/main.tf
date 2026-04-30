@@ -20,7 +20,7 @@ terraform {
   backend "s3" {
     bucket         = "deploy-lambdas-terraform-state"
     key            = "infra/terraform.tfstate"
-    region         = var.aws_region
+    region         = "us-east-1" # Nota: El backend de S3 no acepta variables directas, debe ser string
     dynamodb_table = "terraform-lock-table"
     encrypt        = true
   }
@@ -35,7 +35,6 @@ terraform {
 provider "aws" {
   region = var.aws_region
 }
-
 
 # ----------------------------------- START Database set up (DYNAMODB) -----------------------------------
 resource "aws_dynamodb_table" "users_table" {
@@ -120,7 +119,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   http_method             = aws_api_gateway_method.users_method.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = "arn:aws:apigateway:${var.aws_region}lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}${var.aws_account_id}:function:users-crud-lambda/invocations"
+  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}:${var.aws_account_id}:function:${var.lambda_producer_name}/invocations"
 }
 
 # --- 4. CONFIGURACIÓN DE CORS (OPTIONS) ---
@@ -207,17 +206,6 @@ resource "aws_api_gateway_method_settings" "throttling" {
     throttling_burst_limit = 10
     throttling_rate_limit  = 5
   }
-}
-
-# --- 6. PERMISOS DE INVOCACIÓN ---
-resource "aws_api_gateway_integration" "lambda_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.users_api.id
-  resource_id             = aws_api_gateway_resource.users_resource.id
-  http_method             = aws_api_gateway_method.users_method.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  # Usamos la variable para construir el ARN de invocación
-  uri                     = "arn:aws:apigateway:${var.aws_region}lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}${var.aws_account_id}:function:${var.lambda_producer_name}/invocations"
 }
 # ----------------------------------- END set up (THROTTLING) -----------------------------------
 
