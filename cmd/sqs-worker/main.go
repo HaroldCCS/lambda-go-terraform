@@ -51,7 +51,7 @@ func init() {
 
 // Función auxiliar para recuperar el parámetro seguro
 func getMongoURIFromSSM(ctx context.Context, cfg aws.Config) string {
-	paramName := os.Getenv("MONGO_PARAMETER_NAME") // Ahora usamos el nombre del parámetro
+	paramName := os.Getenv("MONGO_URI") // Ahora usamos el nombre del parámetro
 	ssmClient := ssm.NewFromConfig(cfg)
 
 	out, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
@@ -59,7 +59,7 @@ func getMongoURIFromSSM(ctx context.Context, cfg aws.Config) string {
 		WithDecryption: aws.Bool(true), // Importante para SecureString
 	})
 	if err != nil {
-		log.Fatalf("Error obteniendo MONGO_PARAMETER_NAME desde SSM: %v", err)
+		log.Fatalf("Error obteniendo MONGO_URI desde SSM: %v", err)
 	}
 
 	return *out.Parameter.Value
